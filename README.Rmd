@@ -6,4 +6,722 @@ author: "Charisa Geyer"
 ---
 # Purpose: Practicing using ggplot2 before I attempt the datsci prac project!
 
+I am learning  how to use the RStudio add-in: GGplotAssist
 
+# Cleaning the environment
+```{r}
+rm(list = ls()) # Clean your environment:
+gc() # garbage collection - It can be useful to call gc after a large object has been removed, as this may prompt R to return memory to the operating system.
+library(tidyverse)
+list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
+```
+# Installing the prerequisite and add-in package
+```{r}
+#install.packages("devtools")
+devtools::install_github("cardiomoon/editData")
+#install.packages("devtools")
+devtools::install_github("cardiomoon/ggplotAssist")
+```
+# Loading the dataset to start with
+```{r}
+library(ggplot2)
+library(ggplotAssist)
+data_use <- fmxdat::Indexes
+fmxdat::Indexes_Labs
+
+joined_data_use <- left_join(fmxdat::Indexes %>% gather(Country, TRI, -Date), 
+fmxdat::Indexes_Labs,
+by = "Country") %>% arrange(Date)
+
+# highlight the dataframe/tibble and click on AddIns -> GGplotAssist
+```
+# Now let's follow the tutorial given in class
+
+## Tidy up the data
+```{r}
+pacman::p_load(tidyverse)
+
+plot_df <- 
+left_join(
+fmxdat::Indexes %>% gather(Country, TRI, -Date),
+fmxdat::Indexes_Labs,
+by = "Country"
+) %>% mutate(Label = coalesce(Label, "Other")) %>% arrange(Date)
+  
+print(plot_df)
+```
+
+## Plot all Brics countries together in one plot
+```{r}
+dfPlotData <- plot_df %>% filter(Label == "Brics")
+g <- 
+  dfPlotData %>% 
+  
+  # Initialize the canvas:
+  ggplot() +
+  
+  # Now add the aesthetics:
+  geom_line(aes(x = Date, y = TRI, color = Country), alpha = 0.8, size = 1) 
+
+# Notice that I used alpha to adjust the line opacity (useful when having overlapping lines e.g.)
+
+print(g)
+```
+```{r}
+# Create smaller dataframe with only the Brics countries
+dfPlotData <- plot_df %>% filter(Label == "Brics")
+
+# Create the plot list
+g <- dfPlotData %>% 
+    ggplot() + # Create the canvas
+    geom_line(aes(x = Date, y = TRI, color = Country), alpha = 0.8, size = 1)
+print(g)
+
+```
+
+
+Now bring g down (the plot) and add a couple of things: 
+```{r}
+g <- 
+  g + 
+  theme_bw() + 
+  theme( legend.position = "bottom") + 
+  labs(x = "", y = "Prices",
+       title = "TRI of Brics Countries", 
+       subtitle = "Total Return Index using net dividends reinvested",
+       caption = "Note:\nBloomberg data used")
+  
+g
+```
+
+## Breaking up each line into its own plot
+
+```{r}
+g <- # redefine g now!
+g +
+  facet_wrap(~Country)
+
+g
+```
+
+Almost there… let’s scale the axes to be free for each y, and also change the colours a bit using ggthemes:
+```{r}
+pacman::p_load(ggthemes)
+g <- 
+g + 
+  facet_wrap(~Country, scales = "free_y") + 
+  ggthemes::scale_color_wsj()
+
+g
+```
+
+Another theme library to consider is ggsci. * Here’s the gallery, and you can use this as shown here.
+
+Let’s use e.g. npg as color, and also change the thickness of the lines (see size parameter…)
+```{r}
+pacman::p_load("ggsci")
+g + scale_color_npg()
+```
+Can do a deeper analysis of a subset of dates etc, since the "figures are alive"
+```{r}
+g %+% subset(dfPlotData, Date > as.Date("2009-01-31")) + labs(title = "Post-Crisis TRI")
+```
+```{r}
+g %+% subset(dfPlotData, Date < as.Date("2009-01-31")) + labs(title = "Pre-Crisis TRI")
+```
+You could also retrieve the data of a ggplot object simply as:
+```{r}
+Plot_Data_Recovered <- g$data
+```
+
+You could also add another dataframe and some labels to your plot as:
+
+
+```{r}
+pacman::p_load(lubridate)
+Another_df <- fmxdat::findata %>% gather(Stocks, Px, -Date) %>% filter(Stocks == "JSE.SLM.Close")
+
+g + 
+  geom_line(data = Another_df, aes(Date, Px, color = Stocks), colour = "steelblue", alpha = 0.3) + 
+  geom_label(data = Another_df %>% filter(Date == last(Date)), aes(Date, Px, label = Stocks), size = 3, alpha = 0.1) + 
+  
+  geom_label(data = dfPlotData %>% filter(Date == last(Date)), aes(Date, TRI, label = Country), size = 3, alpha = 0.1) 
+```
+
+# Saving your plots
+```{r}
+rmsfuns::build_path( paste0( getwd(), "Figures"))
+ggsave(
+  filename = "Figures/Plot.png", # here you can also give your figure a name!
+  plot = g, width = 6, height = 6, device = "png")
+```
+
+# Other plots
+
+#Density plots
+```{r}
+plot_data <- 
+  dfPlotData %>% 
+  
+  group_by(Country) %>% 
+  
+  mutate(Return = TRI/lag(TRI)-1) %>% ungroup()
+
+gdens <- 
+  plot_data %>% 
+  ggplot() + 
+  geom_density(aes( x = Return, fill = Country )) #Note - here we set the fill to be given by ‘Country’. Fill works similarly to colour, where the latter would’ve simply coloured the line, not the area under the curve.
+
+gdens
+```
+
+### Adjust opacitity
+
+### Colour the lines
+
+```{r}
+gdens <- 
+gdens +
+  
+  geom_density(aes( x = Return, fill = Country , colour = Country), alpha = 0.2, size = 1.25) + 
+  
+  ggthemes::theme_economist_white()
+
+gdens
+```
+
+Subsetting to look only at the deep left-tail (say returns below 10%) is also super easy:
+
+Notice that subset requires a logical operator (i.e. must give TRUE / FALSE). The following won’t work therefore as it is a wrangle, not a logical operator:
+```{r}
+#gdens %+% subset(plot_data, ifelse(Return < -0.1, -0.1, Return) ) + labs(title = "Left tail plot")
+```
+
+So, let’s bring the tails in a bit to not skew the graph as much. This requires a re-wrangling, not simply a subsetting:
+
+Let’s trim our returns to be between 5% - 95% quantiles of returns only:
+
+# Winzorising
+
+```{r}
+# Winzorising to be between 5% and 95% can be done as follows:
+
+new_plot_data <-
+    plot_data %>% 
+    filter(!is.na(Return)) %>% group_by(Country) %>% 
+    mutate(q05 = quantile(Return, na.rm=T, probs=0.05), q95 = quantile(Return, na.rm=T, probs = 0.95), Return = ifelse(Return >= q95, q95, ifelse(Return <= q05, q05, Return))) %>% 
+    
+    select(-starts_with("q")) %>% 
+    ungroup()
+
+plot_data <- 
+  plot_data %>% 
+  
+  filter(!is.na(Return)) %>% group_by(Country) %>% 
+  
+  mutate(q05 = quantile(Return, na.rm=T, probs = 0.05), q95 = quantile(Return, na.rm=T, probs = 0.95), Return = ifelse(Return >= q95, q95, ifelse(Return <= q05, q05, Return))) %>% 
+  
+  select(-starts_with("q")) %>% ungroup()
+
+gdens <- 
+  ggplot(plot_data) +
+  
+  geom_density(aes( x = Return, fill = Country , colour = Country), alpha = 0.2, size = 1.25) + 
+  
+  ggthemes::theme_economist_white() + 
+  
+  labs(y = "Density (winsorized)", x = "Return", title = "Return density plot") + 
+  
+  theme(legend.position = "bottom")
+
+gdens
+```
+# Figures in functions
+Of course! Ideally you should specify templates for your functions and source it like you would any other comment.
+
+E.g., in the following code chunk I introduce you to boxplotting and jitter plotting combined in ggplot. I do this in a function, where I:
+
+Make my function safe to illustrate an intentional error with a clear message to solve it
+
+Show you how a figure’s design can be flexibly incorporated into a function:
+
+```{r}
+# Create this function and sve it in code file
+# pacman::p_load(purrr)
+# 
+# Jitter_Boxplot <- function(data_frame, Title, Subtitle, Caption, Xlab, Ylab, Alpha_Set = 0.5) {
+# 
+#   # Dataframe should be tidy, and be of the form: 
+#       # date  | Ticker  |   Identifier  |  Return  
+# 
+#   if( !"Identifyer" %in% names(data_frame) ) stop("\n\nERROR:::::>Please provide valid Identifier column!\n\n")
+#   if( !"Date" %in% names(data_frame) ) stop("Please provide valid Date column ")
+#   if( class(data_frame$Date) != "Date" ) stop("Date column not of class Date ")
+#   
+# g1 <-   
+# ggplot(data_frame) + 
+#   
+#   geom_boxplot(aes(x = Identifier, y = Return, fill = Country), alpha = Alpha_Set) + 
+#   
+#   geom_jitter(aes(x = Identifier, y = Return, color = Country, alpha = Alpha_Set)) + 
+#   
+#     theme_bw() + 
+#   
+#   guides(color = FALSE, fill = FALSE, alpha = FALSE) +
+#   # Add titles:
+#   labs(title = Title, 
+#        subtitle = Subtitle,
+#        caption = Caption,
+#        x = Xlab, y = Ylab) + 
+#   
+#   scale_color_npg() + # Now we use fill...
+#   
+#   scale_fill_npg() # Now we use fill...
+# 
+# g1  
+# 
+# }
+
+
+SafeJitter <- purrr::safely(Jitter_Boxplot)
+# Let's first break it to see the error produced:
+Result <-SafeJitter(data_frame = plot_data, 
+               Title = "BRICS Return Histograms", 
+               Subtitle = "Transparency is key", 
+               Caption = "Data was downloaded from Bloomberg", 
+               Xlab = "", Ylab = "Distribution",
+               Alpha_Set = 0.4)
+
+  print(Result$error)
+```
+
+```{r}
+Result <- 
+SafeJitter(data_frame = plot_data %>% mutate(Identifyer = Country), 
+               Title = "BRICS Return Histograms", 
+               Subtitle = "Transparency is key", 
+               Caption = "Data was downloaded from Bloomberg", 
+               Xlab = "", Ylab = "Distribution")
+  
+g <- Result$result
+
+g
+```
+
+# Point plots
+Let’s create a mean-variance plot of various crypto currencies over the last 52 weeks - with the size of the bubble in the plot given by its market at the last date.
+
+(Notice this requires a bit of planning and wrangling before we plot)
+
+```{r}
+Bub_Size <- 
+  fmxdat::cryptos %>% filter(date == last(date)) %>% 
+  
+  select(name, market) %>% rename(Size = market) %>% unique
+
+MeanVar <- 
+  fmxdat::cryptos %>% 
+  
+  filter(date > last(date) %m-% weeks(52)) %>% 
+  
+  group_by(name) %>% mutate(Return = close / lag(close) - 1) %>% 
+  
+  summarise_at(vars(Return), list(Mean = ~mean(., na.rm = T), SD = ~sd(., na.rm=T)))
+
+# Let's append the size column:
+plot_df <- left_join(MeanVar, Bub_Size, by = "name")
+
+g <- 
+  plot_df %>% ggplot() + 
+  
+  geom_point(aes(Mean, SD, size = Size), color = "steelblue", alpha = 0.6) + guides(size = F) + 
+  
+  theme_bw() + 
+  
+  labs(title = "Terrible scales")
+g
+
+```
+Fixing the scale a bit
+
+```{r}
+plot_df <- 
+  
+  plot_df %>% 
+  
+  mutate(Mean = ifelse(Mean > 0.15, 0.15, Mean)) %>% 
+  
+  mutate(SD = ifelse(SD > 0.25, 0.25, SD))
+
+g <- 
+  plot_df %>% ggplot() + 
+  
+  geom_point(aes(Mean, SD, size = Size), color = "steelblue", alpha = 0.6) + guides(size = F) + 
+  
+  theme_bw() + 
+  
+  labs(title = "Terrible Size Spread")
+g
+```
+still not so happy with that, let's set quantiles rather
+Notice my setting of colours based on a column, as well as size based on a value above. Also - note how I changed the legend title
+```{r}
+plot_df_Size_Adj <- 
+  plot_df %>% 
+  mutate(Q1 = quantile(Size, 0.1)) %>% 
+  
+  mutate(Q2 = quantile(Size, 0.8)) %>%
+  
+  mutate(Size = ifelse(Size < Q1, 5,
+                       ifelse(Size < Q2, 6,
+                              ifelse(Size >= Q2, 7, NA_real_ )))) %>% 
+  
+  mutate(ColorSet = ifelse(Size == 5, "small", ifelse(Size == 6, "medium", "large")))
+
+g <- 
+  plot_df_Size_Adj %>% ggplot() + 
+  
+  geom_point(aes(Mean, SD, size = Size, color = ColorSet), alpha = 0.6) +
+  
+  scale_color_manual(values = c(small = "darkgreen", medium = "steelblue", large = "darkred")) + 
+  
+  guides(size = F, color=guide_legend(title="Size Guide")) + 
+  
+  theme_bw() + 
+  
+  labs(title = "Size and spread sorted")
+g
+```
+
+# Barplots
+ To produce barplots in ggplot you have to be somewhat careful, the notation can initially be a bit confusing.
+
+I give you an example below of a simple bar plot:
+
+For this I show you a few tricks:
+Notice how I transform a numeric column into a date column
+
+Notice how I calculate the max wind per year - after which I calculate the percentage of that year’s max wind relative to all time max. Same for pressure
+
+In the plot code - notice how I make the axes show only every second year, and doing so show the month and year as e.g. Jan ’82
+
+Notice how I flip the x-axes to be vertical.
+
+Notice that the legends are dropped as they are redundant as the facet title are descriptive enough.
+```{r}
+df_barplot <-
+  
+  dplyr::storms %>% 
+  
+  group_by(year) %>% summarize(max_wind = max(wind), max_pressure = max(pressure)) %>% 
+  
+  ungroup() %>% 
+  
+  mutate(max_wind = max_wind / max(max_wind), max_pressure = max_pressure / max(max_pressure)) %>% 
+  # Let's make it tidy...
+  gather(Type, Value, -year) %>% 
+  # Let's make column year a valid date object:
+  mutate(year = as.Date( paste0( year, "-01-01" )) )
+
+
+df_barplot %>% 
+  
+  ggplot() + 
+  
+  geom_bar(aes(x = year, y = Value, fill = Type), stat = "identity") + 
+  # scale_
+  facet_wrap(~Type, scales = "free_y", nrow = 2) + 
+  
+  scale_x_date(labels=scales::date_format("%b '%y"), date_breaks = "2 years") + 
+  
+  theme_bw() + 
+  
+    theme(axis.text.x=element_text(angle = 90, hjust = 1)) + 
+  
+  labs(x = "", y = "") + guides(fill = F)
+```
+
+# Star wars plotting
+For ordering plots, we make use of the forcats package in the code below. First, let’s plot the frequency of eye-colours for people in Star Wars:
+```{r}
+pacman::p_load(forcats)
+
+SW <- 
+  dplyr::starwars %>% 
+  
+  select(name, height, mass, hair_color, gender, eye_color) %>% 
+  
+  mutate(height = as.numeric(height))
+
+SW %>%
+  
+  mutate(eye_color = forcats::fct_infreq(eye_color)) %>%
+  
+  ggplot() + 
+  
+  geom_bar(aes(x = eye_color), fill = "steelblue", alpha = 0.7) + 
+  
+  coord_flip() + 
+  
+  labs(x = "Count", y = "Eye-Colour", title = "Eye-Colour spread in Star Wars movies", caption = "Data from dplyr package in R")
+```
+Let’s plot the height of male characters in Starwars, arranged by height, with a dotted line indicating the height of Darth Vader:
+1. only males
+2. height
+3. arrange in order by height
+4. add dotted line for height of DV
+
+filter(Date > first(Date)) %>%
+
+
+```{r}
+height_plot <- SW %>% 
+    
+    filter(!is.na(height)) %>%
+    filter(gender == "masculine") %>%
+    mutate(name = as_factor(name)) %>% 
+    mutate(name = fct_reorder(name, height)) %>% # This **converts** the `name` column from a character vector into a **factor**
+    mutate(DVaderheight = max(ifelse(name == "Darth Vader", height, NA_real_), na.rm = T)) %>%
+    arrange(height)  
+
+ggplot(height_plot, aes(x = name, y = height)) +
+    geom_col() + # must say this to get the cols to show up! 
+    geom_hline(aes(yintercept = DVaderheight), linetype = "dotted", color = "red", size = 1) +
+    # coord_flip() +
+    labs(title = "Character heights in Starwars", y = "Height in cm", x = "Character name") +
+    theme_economist_white() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+
+```{r}
+height_plot <- SW %>%
+  filter(!is.na(height)) %>%
+  filter(gender == "masculine") %>%
+  mutate(name = as_factor(name)) %>%
+  mutate(name = fct_reorder(name, height)) %>%
+  mutate(DVaderheight = max(ifelse(name == "Darth Vader", height, NA_real_), na.rm = TRUE)) %>%
+  arrange(height)
+
+height_plot %>% 
+    ggplot() +
+    geom_bar(aes(x = name, y = height, color = "steelblue"), stat = "identity") +
+   # scale_fill_manual(values = "darkgreen") +
+    geom_hline(aes(yintercept = DVaderheight), linetype = "dotted", color = "red", alpha = 0.8, size = 1) +
+    theme_bw()+
+    geom_label( data = height_plot %>% filter(height == median(height, na.rm=T)) 
+                %>% head(1), aes(name, DVaderheight, label = glue::glue("Vader's height: {max(DVaderheight)} cm")), alpha = 0.5) +
+    guides(fill = F) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust =1)) +
+    labs(title = "Heights of Characters in StarWars", x = "Character name", y = "Height in cm")
+
+
+ggplot(height_plot, aes(x = name, y = height)) +   # No reorder() needed again
+  geom_col() +                                     # Use geom_col (like geom_bar with stat = "identity")
+  geom_hline(aes(yintercept = DVaderheight),       # Correct function to use
+             linetype = "dotted", color = "red", size = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  labs(title = "Character heights in Star Wars",
+       y = "Height in cm", x = "Character name")
+    
+```
+
+```{r}
+plot_df <- 
+  
+SW %>% filter(!is.na(height)) %>% 
+  
+  filter(gender == "masculine") %>% 
+  
+  mutate(name = as_factor(name)) %>% 
+  
+  mutate(name = fct_reorder(name, height)) %>% 
+  
+  mutate(VaderHeight = max( ifelse(name == "Darth Vader", height, NA_real_), na.rm = T ) ) %>% 
+  
+  mutate(Taller_Than_Vader = ifelse(height > VaderHeight, "Taller", "Shorter"))
+  
+  plot_df %>% 
+    
+    ggplot() + 
+    
+    geom_bar(aes(name, height, fill = Taller_Than_Vader), stat= 'identity') + 
+    
+    scale_fill_manual(values = c(Taller = "darkred", Shorter = "darkgreen")) + 
+    
+    theme_bw() + 
+    
+    theme(axis.text.x=element_text(angle = 90, hjust = 1)) + 
+    
+    geom_hline(aes(yintercept = max(VaderHeight)), linetype = "dotted", size = 2, alpha = 0.8, color = "steelblue") + 
+    
+    geom_label( data = plot_df %>% filter(height == median(height, na.rm=T)) %>% head(1), aes(name, VaderHeight, label = glue::glue("Vader's height: {max(VaderHeight)} cm")), alpha = 0.5) + 
+    guides(fill = F) + 
+    labs(title = "Height of Star Wars characters relative to Darth Vader's height", caption = "Data from dplyr package",
+         subtitle = "Seems Darth Vader is not the tallest....")
+```
+
+# Some bonus examples
+Combining multiple plots onto one: 
+```{r}
+pacman::p_load(patchwork)
+
+df_plot <- 
+  
+left_join(
+  
+fmxdat::Indexes %>% gather(Country, TRI, -Date),
+
+fmxdat::Indexes_Labs,
+
+by = "Country"
+
+) %>% 
+  
+  mutate(Label = coalesce(Label, "Other")) %>% 
+  
+  arrange(Date)
+
+
+p1 <- 
+  df_plot %>% 
+  
+  filter(Label == "Brics") %>% 
+  
+  ggplot() + 
+  
+  geom_line(aes(Date, TRI, color = Country)) + 
+  
+  theme_bw() + 
+  
+  theme(legend.position = "bottom")
+
+p2 <- 
+SafeJitter(data_frame = plot_data %>% mutate(Identifyer = Country), 
+           
+               Title = "BRICS Return Histograms", 
+           
+               Subtitle = "Transparency is key", 
+           
+               Caption = "Data was downloaded from Bloomberg", 
+           
+               Xlab = "", Ylab = "Distribution")$result
+
+p3 <- 
+    plot_df %>% 
+  
+    ggplot() + 
+  
+    geom_bar(aes(name, height, fill = Taller_Than_Vader), stat= 'identity') + 
+  
+    scale_fill_manual(values = c(Taller = "darkred", Shorter = "darkgreen")) + 
+  
+    theme_bw() + 
+  
+    theme(axis.text.x=element_text(angle = 90, hjust = 1)) + 
+  
+    geom_hline(aes(yintercept = max(VaderHeight)), linetype = "dotted", size = 2, alpha = 0.8, color = "steelblue") + 
+  
+    geom_label( data = plot_df %>% filter(height == median(height, na.rm=T)) %>% head(1), aes(name, VaderHeight, label = glue::glue("Vader's height: {max(VaderHeight)} cm")), alpha = 0.5) + 
+    guides(fill = F)
+
+p3/ (p2 +p1) + 
+  plot_annotation(
+  title = 'Patching figures together',
+  caption = 'Source: @littlemissdata'
+) & 
+  theme(text = element_text('bold'))
+```
+# Embed images into tidyverse
+Second, how to embed a static graphic (jpg / png) into a tidyframe:
+An easy way though is to use the magick & ggpubr packages as follows:
+
+
+```{r}
+pacman::p_load(cowplot, magick, ggpubr)
+Img_embed <- image_read("https://i.imgur.com/eDCUyUql.jpg")
+
+Img_embed <- 
+  
+  ggplot() +
+  
+  background_image(Img_embed) + coord_fixed()
+
+Img_embed / p3 +   plot_layout(widths = c(1, 1))
+```
+# Examples
+## US Murders
+Let’s create a plot for each region (South, West, North East) that:
+
+shows the percentage murders for every state per 1 million people;
+
+Show the Name and % text of the best and worst states (tip: use ggrepel to not have text boxes overlap);
+
+Ensure the four plots have the same axes
+
+Ensure axes are log-scaled
+
+Have size of bubbles be reflective of amount of murders.
+
+get data from dslabs
+
+```{r}
+#pacman::p_load("dslabs", "tidyverse", "ggthemes", "ggrepel", "scales")
+
+murdr <- 
+  
+  dslabs::murders %>%
+  
+  mutate(mrate = total / population * 10^6) %>% ## new col with rate of murder per million 10^6
+  
+  mutate(pop_print = population / 1e6) ## just show the pop in another way
+
+
+murdr %>% 
+  ggplot() +
+  
+  geom_point(aes(pop_print, mrate, size = total, color = region)) + 
+  
+  facet_wrap(~region) + ## by region ? 
+  
+  scale_x_log10() +
+  
+  scale_y_log10() +
+  
+  theme_bw() + 
+  
+  # Let's alter the strip text and background a bit:
+  theme(strip.background = element_rect(fill = "steelblue"),
+        strip.text = element_text(face = "bold", colour = "black", size = 10)) + 
+  
+  scale_color_manual(values = c("red", "blue", "darkgreen", "orange")) + 
+  
+  labs(title = "Murders per Million by Region", x = "Population million (Log Scaled)",
+       y = "Murders per million (Log Scaled)") + 
+  
+  ggrepel::geom_label_repel(data = murdr %>% group_by(region) %>% arrange(mrate) %>% filter(mrate == max(mrate)), aes(pop_print, mrate, label = glue::glue("{state}:\n{round(mrate, 1)} per mn")), size = 4, alpha = 0.35, fill = "red") + ## no automatic overlapping!!
+  
+  ggrepel::geom_label_repel(data = murdr %>% group_by(region) %>% arrange(mrate) %>% filter(mrate == min(mrate)), aes(pop_print, mrate, label = glue::glue("{state}:\n {round(mrate, 1)} per mn")), size = 4, alpha = 0.35, fill = "green") + ## \n means newline
+  
+  guides(color = F) + 
+  
+  theme(legend.title = element_text("Total Murders"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 2016 US Election polls
+## 
